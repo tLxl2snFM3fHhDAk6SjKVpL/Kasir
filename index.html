@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pesan Menu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .menu-card { border: none; border-radius: 12px; transition: 0.3s; height: 100%; }
+        .menu-card:hover { transform: translateY(-3px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+        .sticky-cart { position: sticky; top: 20px; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary mb-4 shadow">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1"><i class="fas fa-utensils"></i> WarungKu</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8 mb-4">
+                <h4 class="mb-3 fw-bold text-secondary">Daftar Menu</h4>
+                <div id="menu-display" class="row g-3"></div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm sticky-cart border-0">
+                    <div class="card-header bg-success text-white py-3 text-center">
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-shopping-cart"></i>  Keranjang Saya</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul id="cart-items" class="list-group list-group-flush mb-3"></ul>
+                        
+                        <div class="d-flex justify-content-between fw-bold fs-5 mb-3 border-top pt-2">
+                            <span>TOTAL:</span>
+                            <span>Rp <span id="cart-total">0</span></span>
+                        </div>
+                        
+                        <div class="bg-light p-3 rounded mb-3">
+                            <label class="small fw-bold mb-2">Informasi Pemesan:</label>
+                            <input type="text" id="user-name" class="form-control form-control-sm mb-2" placeholder="Nama Lengkap">
+                            <input type="text" id="user-phone" class="form-control form-control-sm mb-2" placeholder="No. Telepon">
+                            <textarea id="user-address" class="form-control form-control-sm" placeholder="Alamat Lengkap" rows="2"></textarea>
+                        </div>
+                        
+                        <button onclick="submitOrder()" class="btn btn-primary w-100 py-2 fw-bold shadow-sm">
+                            <i class="fas fa-paper-plane"></i>  PESAN SEKARANG
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let menu = JSON.parse(localStorage.getItem('posMenuItems')) || [];
+        let cart = [];
+
+        function renderMenu() {
+            const container = document.getElementById('menu-display');
+            if (menu.length === 0) {
+                container.innerHTML = '<p class="text-muted">Menu belum tersedia.</p>';
+                return;
+            }
+            container.innerHTML = menu.map(item => `
+                <div class="col-6 col-md-4">
+                    <div class="card menu-card shadow-sm">
+                        <div class="card-body d-flex flex-column justify-content-between">
+                            <div>
+                                <h6 class="fw-bold mb-1">${item.name}</h6>
+                                <p class="text-primary fw-bold mb-3">Rp ${item.price.toLocaleString()}</p>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm w-100" onclick="addToCart(${item.id})">
+                                <i class="fas fa-plus"></i> Tambah
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addToCart(id) {
+            const product = menu.find(m => m.id === id);
+            const existing = cart.find(c => c.id === id);
+            if (existing) { existing.qty++; } 
+            else { cart.push({ ...product, qty: 1 }); }
+            updateCart();
+        }
+
+        function updateCart() {
+            const list = document.getElementById('cart-items');
+            let total = 0;
+            list.innerHTML = cart.map((item, index) => {
+                total += item.price * item.qty;
+                return `
+                <li class="list-group-item d-flex justify-content-between align-items-center px-0 bg-transparent">
+                    <div>
+                        <span class="small fw-bold">${item.name}</span><br>
+                        <small class="text-muted">${item.qty} x ${item.price.toLocaleString()}</small>
+                    </div>
+                    <button class="btn btn-sm text-danger border-0" onclick="removeFromCart(${index})">&times;</button>
+                </li>`;
+            }).join('');
+            document.getElementById('cart-total').innerText = total.toLocaleString();
+        }
+
+        function removeFromCart(i) { cart.splice(i, 1); updateCart(); }
+
+        function submitOrder() {
+            const name = document.getElementById('user-name').value;
+            const phone = document.getElementById('user-phone').value;
+            const address = document.getElementById('user-address').value;
+
+            if (cart.length === 0) return alert("Pilih menu terlebih dahulu!");
+            if (!name || !phone || !address) return alert("Mohon lengkapi data Anda!");
+
+            const newOrder = {
+                id: Date.now(),
+                customer: { name, phone, address },
+                items: [...cart],
+                total: document.getElementById('cart-total').innerText,
+                time: new Date().toLocaleString('id-ID'),
+                status: 'Baru'
+            };
+
+            const orders = JSON.parse(localStorage.getItem('posOrders')) || [];
+            orders.unshift(newOrder);
+            localStorage.setItem('posOrders', JSON.stringify(orders));
+
+            alert("Pesanan Terkirim! Silakan tunggu pesanan Anda.");
+            cart = [];
+            updateCart();
+            document.getElementById('user-name').value = '';
+            document.getElementById('user-phone').value = '';
+            document.getElementById('user-address').value = '';
+        }
+
+        renderMenu();
+    </script>
+</body>
+</html>
