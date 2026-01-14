@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pemesanan</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
+        .menu-card { border: none; border-radius: 15px; transition: 0.3s; background: #fff; height: 100%; }
+        .menu-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .sticky-cart { position: sticky; top: 20px; z-index: 100; }
+        #loading-screen { position: fixed; top:0; left:0; width:100%; height:100%; background:white; display:flex; justify-content:center; align-items:center; z-index:9999; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <div class="text-center">
+            <div class="spinner-border text-primary mb-2"></div>
+            <p>Menghubungkan ke Database...</p>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
+        <div class="container">
+            <span class="navbar-brand fw-bold"><i class="fas fa-store me-2"></i> TokoKu</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8 mb-4">
+                <h5 class="fw-bold mb-3">Silakan Pilih Produk</h5>
+                <div id="menu-display" class="row g-3">
+                    <p class="text-muted p-3">Memuat produk...</p>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 sticky-cart">
+                    <div class="card-header bg-success text-white py-3">
+                        <h6 class="mb-0 fw-bold"><i class="fas fa-shopping-basket me-2"></i> Keranjang </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="cart-items" class="mb-3"></div>
+                        <div class="d-flex justify-content-between fw-bold border-top pt-2 mb-3">
+                            <span>Total Bayar:</span>
+                            <span class="text-primary">Rp <span id="cart-total">0</span></span>
+                        </div>
+                        <hr>
+                        <div class="mb-3">
+                            <label class="small fw-bold text-muted">DATA PEMESAN</label>
+                            <input type="text" id="user-name" class="form-control mb-2" placeholder="Nama Lengkap">
+                            <input type="tel" id="user-phone" class="form-control mb-3" placeholder="No. WhatsApp">
+                            
+                            <label class="small fw-bold text-muted">ALAMAT LENGKAP</label>
+                            <select id="provinsi" class="form-select form-select-sm mb-2"><option value="">Pilih Provinsi</option></select>
+                            <select id="kabupaten" class="form-select form-select-sm mb-2" disabled><option value="">Pilih Kota/Kab</option></select>
+                            <select id="kecamatan" class="form-select form-select-sm mb-2" disabled><option value="">Pilih Kecamatan</option></select>
+                            <select id="kelurahan" class="form-select form-select-sm mb-2" disabled><option value="">Pilih Desa</option></select>
+                            <textarea id="user-jalan" class="form-control form-control-sm" placeholder="Nama Jalan, No Rumah, Patokan" rows="2"></textarea>
+                        </div>
+                        <button id="btn-order" onclick="submitOrder()" class="btn btn-primary w-100 fw-bold py-2 shadow-sm">
+                            <i class="fas fa-paper-plane me-2"></i> PESAN
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, onSnapshot, updateDoc, arrayUnion, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyC8ZFSyq8xazlYS_NkuJLp5zUjIT7Pg1Ak",
+        authDomain: "warung-23.firebaseapp.com",
+        projectId: "warung-23",
+        storageBucket: "warung-23.firebasestorage.app",
+        messagingSenderId: "715805019613",
+        appId: "1:715805019613:web:0286f77fb802aa128f3a34",
+        measurementId: "G-B8FGW8L9BN"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokoID = urlParams.get('toko') || 'warung_demo';
+    const tokoRef = doc(db, "WarungData", tokoID);
+
+    let cart = []; // Ubah jadi variabel lokal module
+    let menuData = [];
+
+    // Tampilkan loading screen
+    const loadingScreen = document.getElementById('loading-screen');
+
+    onSnapshot(tokoRef, (docSnap) => {
+        if (loadingScreen) loadingScreen.style.display = 'none';
+        if (docSnap.exists()) {
+            menuData = docSnap.data().menu || [];
+            renderMenu(menuData);
+        } else {
+            // Jika toko belum ada data awal
+            setDoc(tokoRef, { 
+                menu: [{ id: 1, name: "Nasi Goreng Special", price: 15000 }],
+                orders: [] 
+            });
+        }
+    });
+
+    function renderMenu(items) {
+        const display = document.getElementById('menu-display');
+        display.innerHTML = items.map(item => `
+            <div class="col-6 col-md-4">
+                <div class="card menu-card shadow-sm">
+                    <div class="card-body d-flex flex-column justify-content-between">
+                        <div>
+                            <h6 class="fw-bold mb-1">${item.name}</h6>
+                            <p class="text-primary fw-bold mb-2">Rp ${item.price.toLocaleString()}</p>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm w-100" onclick="addToCart(${item.id})">
+                            <i class="fas fa-plus"></i> Tambah
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // --- DAFTARKAN FUNGSI KE WINDOW AGAR BISA DIPANGGIL ONCLICK ---
+
+    window.addToCart = function(id) {
+        const product = menuData.find(m => m.id === id);
+        const existing = cart.find(c => c.id === id);
+        if (existing) { 
+            existing.qty++; 
+        } else { 
+            cart.push({ ...product, qty: 1 }); 
+        }
+        window.updateCart();
+    }
+
+    window.updateCart = function() {
+        const list = document.getElementById('cart-items');
+        let total = 0;
+        list.innerHTML = cart.map((item, index) => {
+            total += item.price * item.qty;
+            return `<div class="d-flex justify-content-between small mb-1">
+                        <span>${item.name} (x${item.qty})</span>
+                        <span class="text-danger" style="cursor:pointer" onclick="removeFromCart(${index})"><i class="fas fa-times"></i></span>
+                    </div>`;
+        }).join('');
+        document.getElementById('cart-total').innerText = total.toLocaleString();
+    }
+
+    window.removeFromCart = function(i) {
+        cart.splice(i, 1);
+        window.updateCart();
+    }
+
+    window.submitOrder = async function() {
+        const name = document.getElementById('user-name').value;
+        const phone = document.getElementById('user-phone').value;
+        const jalan = document.getElementById('user-jalan').value;
+        const kl = document.getElementById('kelurahan');
+        const kc = document.getElementById('kecamatan');
+        const kb = document.getElementById('kabupaten');
+        const pr = document.getElementById('provinsi');
+
+        if (cart.length === 0) return alert("Keranjang masih kosong!");
+        if (!name || !phone || !jalan || !kl.value) return alert("Lengkapi data pengiriman!");
+
+        const btn = document.getElementById('btn-order');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Mengirim...';
+
+        const fullAlamat = `${jalan}, ${kl.options[kl.selectedIndex].text}, ${kc.options[kc.selectedIndex].text}, ${kb.options[kb.selectedIndex].text}, ${pr.options[pr.selectedIndex].text}`;
+
+        const newOrder = {
+            orderId: Date.now(),
+            customer: { name, phone, address: fullAlamat },
+            items: [...cart],
+            total: document.getElementById('cart-total').innerText,
+            time: new Date().toLocaleString('id-ID'),
+            status: 'Baru'
+        };
+
+        try {
+            await updateDoc(tokoRef, { orders: arrayUnion(newOrder) });
+            alert("Pesanan Terkirim!");
+            
+            // 1. Kosongkan Keranjang
+            cart = [];
+            window.updateCart();
+
+            // 2. Reset Form Input Teks
+            document.getElementById('user-name').value = '';
+            document.getElementById('user-phone').value = '';
+            document.getElementById('user-jalan').value = '';
+
+            // 3. Reset Dropdown Alamat (Wilayah)
+            document.getElementById('provinsi').value = '';
+            
+            const dropdowns = ['kabupaten', 'kecamatan', 'kelurahan'];
+            dropdowns.forEach(id => {
+                const el = document.getElementById(id);
+                el.innerHTML = `<option value="">Pilih ${id.charAt(0).toUpperCase() + id.slice(1)}</option>`;
+                el.disabled = true;
+            });
+
+            // 4. Reset Tombol
+            btn.disabled = false;
+            btn.innerText = "PESAN";
+            
+        } catch (e) {
+            alert("Gagal mengirim pesanan: " + e.message);
+            btn.disabled = false;
+            btn.innerText = "PESAN";
+        }
+    }
+</script>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    const apiWilayah = 'https://www.emsifa.com/api-wilayah-indonesia/api';
+    async function loadData(url, id, placeholder) {
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            let html = `<option value="">Pilih ${placeholder}</option>`;
+            data.forEach(v => html += `<option value="${v.id}">${v.name}</option>`);
+            document.getElementById(id).innerHTML = html;
+            document.getElementById(id).disabled = false;
+        } catch (e) { console.error("Gagal memuat wilayah"); }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadData(`${apiWilayah}/provinces.json`, 'provinsi', 'Provinsi');
+        document.getElementById('provinsi').onchange = (e) => loadData(`${apiWilayah}/regencies/${e.target.value}.json`, 'kabupaten', 'Kota/Kab');
+        document.getElementById('kabupaten').onchange = (e) => loadData(`${apiWilayah}/districts/${e.target.value}.json`, 'kecamatan', 'Kecamatan');
+        document.getElementById('kecamatan').onchange = (e) => loadData(`${apiWilayah}/villages/${e.target.value}.json`, 'kelurahan', 'Desa');
+    });
+</script>
+</body>
+</html>

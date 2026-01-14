@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+        .card { border: none; border-radius: 12px; }
+        
+        /* Status Warna Border */
+        .order-card { border-left: 6px solid #0d6efd; margin-bottom: 15px; position: relative; transition: 0.3s; }
+        .order-card.status-selesai { border-left-color: #198754; opacity: 0.85; }
+        
+        .sidebar-title { font-size: 0.9rem; font-weight: bold; color: #666; text-transform: uppercase; }
+        .summary-box { background: #fff; border-radius: 10px; padding: 15px; border-top: 4px solid #198754; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .btn-x { position: absolute; top: 10px; right: 10px; color: #dc3545; border: none; background: none; font-size: 1.2rem; cursor: pointer; z-index: 10; }
+        .btn-x:hover { color: #a71d2a; }
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="text-center">
+            <div class="spinner-border text-primary mb-2"></div>
+            <p>Memverifikasi Akses...</p>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container d-flex justify-content-between">
+            <span class="navbar-brand fw-bold">
+                <i class="fas fa-user-shield me-2"></i> ADMIN: <span id="display-toko" class="text-info">...</span>
+            </span>
+            <button onclick="logout()" class="btn btn-outline-light btn-sm fw-bold">
+                <i class="fas fa-sign-out-alt"></i> Keluar
+            </button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="summary-box">
+                    <h6 class="fw-bold"><i class="fas fa-list-ol me-2"></i>Ringkasan (Semua Pesanan)</h6>
+                    <div id="summary-content" class="d-flex flex-wrap gap-3 mt-2 small">
+                        Menunggu pesanan...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-8 mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0">Pesanan Masuk</h5>
+                    <button onclick="resetData()" class="btn btn-outline-danger btn-sm"><i class="fas fa-trash"></i> Reset Semua</button>
+                </div>
+                <div id="order-list">
+                    <p class="text-muted">Menunggu pesanan baru...</p>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-body">
+                        <p class="sidebar-title">Tambah Produk Baru</p>
+                        <input type="text" id="menu-name" class="form-control mb-2" placeholder="Nama Menu">
+                        <input type="number" id="menu-price" class="form-control mb-3" placeholder="Harga (Rp)">
+                        <button onclick="addMenu()" class="btn btn-primary w-100 fw-bold">TAMBAH PRODUK</button>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <p class="sidebar-title">Produk Tersedia</p>
+                        <div id="menu-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, onSnapshot, updateDoc, arrayUnion, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyC8ZFSyq8xazlYS_NkuJLp5zUjIT7Pg1Ak",
+        authDomain: "warung-23.firebaseapp.com",
+        projectId: "warung-23",
+        storageBucket: "warung-23.firebasestorage.app",
+        messagingSenderId: "715805019613",
+        appId: "1:715805019613:web:0286f77fb802aa128f3a34"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokoID = urlParams.get('toko');
+
+    let currentMenu = [];
+    let currentOrders = [];
+    let tokoRef;
+
+    // --- SISTEM KEAMANAN: CEK LOGIN ---
+    onAuthStateChanged(auth, async (user) => {
+        if (!user || !tokoID) {
+            window.location.href = "login.html"; // Tendang ke login jika belum auth
+            return;
+        }
+
+        tokoRef = doc(db, "WarungData", tokoID);
+        const docSnap = await getDoc(tokoRef);
+
+        // Cek apakah user yang login adalah pemilik toko ini
+        if (docSnap.exists() && docSnap.data().ownerEmail === user.email) {
+            document.getElementById('display-toko').innerText = tokoID.toUpperCase();
+            document.getElementById('loading-overlay').style.display = 'none'; // Buka akses
+            startListening();
+        } else {
+            alert("Akses Ditolak: Anda bukan pemilik toko ini.");
+            window.location.href = "login.html";
+        }
+    });
+
+    // Logout
+    window.logout = function() {
+        signOut(auth).then(() => window.location.href = "login.html");
+    }
+
+    // Mendengarkan data secara Realtime
+    function startListening() {
+        onSnapshot(tokoRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                currentMenu = data.menu || [];
+                currentOrders = data.orders || [];
+                renderOrders(currentOrders);
+                renderMenuList(currentMenu);
+                updateSummary(currentOrders);
+            }
+        });
+    }
+
+    // --- LOGIKA PESANAN (DIPERBARUI) ---
+    function updateSummary(orders) {
+        const counts = {};
+        
+        // Filter hanya pesanan yang statusnya BUKAN 'Selesai'
+        const activeOrders = orders.filter(order => order.status !== 'Selesai');
+
+        activeOrders.forEach(order => {
+            order.items.forEach(item => {
+                counts[item.name] = (counts[item.name] || 0) + item.qty;
+            });
+        });
+
+        const container = document.getElementById('summary-content');
+        const html = Object.keys(counts).map(key => `
+            <span class="badge bg-light text-dark border p-2">
+                <i class="fas fa-utensils me-1 text-success"></i> ${key}: <b>${counts[key]}</b>
+            </span>
+        `).join('');
+        
+        container.innerHTML = html || "Semua pesanan sudah diselesaikan.";
+    }
+
+    function renderOrders(orders) {
+        const list = document.getElementById('order-list');
+        if (orders.length === 0) {
+            list.innerHTML = '<div class="alert alert-light text-center">Belum ada pesanan masuk.</div>';
+            return;
+        }
+
+        list.innerHTML = [...orders].reverse().map((order, revIdx) => {
+            const idx = orders.length - 1 - revIdx;
+            const isSelesai = order.status === 'Selesai';
+            
+            return `
+            <div class="card shadow-sm order-card ${isSelesai ? 'status-selesai' : ''} mb-3">
+                <button onclick="deleteSingleOrder(${idx})" class="btn-x" title="Hapus"><i class="fas fa-times-circle"></i></button>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between pe-4">
+                        <h6 class="fw-bold ${isSelesai ? 'text-success' : 'text-primary'}">${order.customer.name}</h6>
+                        <small class="text-muted">${order.time}</small>
+                    </div>
+                    <p class="mb-1 small"><b>WA:</b> ${order.customer.phone} | <b>Alamat:</b> ${order.customer.address}</p>
+                    <hr class="my-2">
+                    <ul class="mb-2 small">
+                        ${order.items.map(i => `<li>${i.name} (x${i.qty})</li>`).join('')}
+                    </ul>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <div>
+                            <button onclick="callWA('${order.customer.phone}')" class="btn btn-sm btn-outline-success me-1"><i class="fab fa-whatsapp"></i></button>
+                            ${!isSelesai ? 
+                                `<button onclick="setOrderSelesai(${idx})" class="btn btn-sm btn-success">Selesaikan</button>` : 
+                                `<span class="badge bg-success">Selesai</span>`
+                            }
+                        </div>
+                        <div class="fw-bold text-success">Rp ${order.total}</div>
+                    </div>
+                </div>
+            </div>
+        `}).join('');
+    }
+
+    window.setOrderSelesai = async function(idx) {
+        const updated = [...currentOrders];
+        updated[idx].status = 'Selesai';
+        await updateDoc(tokoRef, { orders: updated });
+    }
+
+    window.deleteSingleOrder = async function(idx) {
+        if(confirm("Hapus pesanan ini?")) {
+            const updated = [...currentOrders];
+            updated.splice(idx, 1);
+            await updateDoc(tokoRef, { orders: updated });
+        }
+    }
+
+    window.callWA = function(phone) {
+        let cleanPhone = phone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.slice(1);
+        window.open(`https://wa.me/${cleanPhone}`, '_blank');
+    }
+
+    function renderMenuList(items) {
+        const list = document.getElementById('menu-list');
+        list.innerHTML = items.map((item, index) => `
+            <div class="d-flex justify-content-between align-items-center border-bottom py-2 small">
+                <div><b>${item.name}</b><br>Rp ${item.price.toLocaleString()}</div>
+                <button onclick="deleteMenu(${index})" class="btn btn-link text-danger p-0"><i class="fas fa-trash"></i></button>
+            </div>
+        `).join('');
+    }
+
+    window.addMenu = async function() {
+    const name = document.getElementById('menu-name').value;
+    const price = parseInt(document.getElementById('menu-price').value);
+    
+    if (!name || !price) return alert("Isi data!");
+    
+    try {
+        await updateDoc(tokoRef, { 
+            menu: arrayUnion({ id: Date.now(), name, price }) 
+        });
+        document.getElementById('menu-name').value = '';
+        document.getElementById('menu-price').value = '';
+        alert("Produk baru telah ditambahkan!");
+    } catch (error) {
+        console.error("Gagal tambah produk:", error);
+        alert("Gagal: " + error.message);
+    }
+}
+
+    window.deleteMenu = async function(idx) {
+        if(confirm("Hapus produk?")) {
+            const updated = [...currentMenu];
+            updated.splice(idx, 1);
+            await updateDoc(tokoRef, { menu: updated });
+        }
+    }
+
+    window.resetData = async function() {
+        if(confirm("Hapus SEMUA riwayat pesanan?")) {
+            await updateDoc(tokoRef, { orders: [] });
+        }
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        body { background: #f0f2f5; height: 100vh; display: flex; align-items: center; }
+        .login-card { max-width: 400px; width: 100%; margin: auto; border: none; border-radius: 15px; }
+        .spinner-border { width: 1.2rem; height: 1.2rem; }
+    </style>
+</head>
+<body>
+
+<div class="card login-card shadow">
+    <div class="card-body p-4">
+        <h4 class="fw-bold text-center mb-4" id="auth-title">Admin Login</h4>
+        
+        <div id="auth-form">
+            <div class="mb-3">
+                <label class="form-label small fw-bold">Email</label>
+                <input type="email" id="email" class="form-control" placeholder="email@toko.com">
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold">Password</label>
+                <input type="password" id="password" class="form-control" placeholder="******">
+            </div>
+            
+            <div id="reg-fields" style="display: none;">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Nama Toko (ID Unik)</label>
+                    <input type="text" id="toko-name" class="form-control" placeholder="contoh: toko-88">
+                    <small class="text-muted">Gunakan huruf kecil dan tanda hubung, tanpa spasi.</small>
+                </div>
+            </div>
+            
+            <button id="btn-main" onclick="handleAuth()" class="btn btn-primary w-100 fw-bold mb-2">
+                <span id="btn-text">LOGIN</span>
+            </button>
+            <button id="btn-toggle" onclick="toggleMode()" class="btn btn-link w-100 btn-sm text-decoration-none">
+                Belum punya akun? Daftar Toko
+            </button>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyC8ZFSyq8xazlYS_NkuJLp5zUjIT7Pg1Ak",
+        authDomain: "warung-23.firebaseapp.com",
+        projectId: "warung-23",
+        storageBucket: "warung-23.firebasestorage.app",
+        messagingSenderId: "715805019613",
+        appId: "1:715805019613:web:0286f77fb802aa128f3a34"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let isRegisterMode = false;
+
+    // FUNGSI GANTI MODE (LOGIN / DAFTAR)
+    window.toggleMode = function() {
+        isRegisterMode = !isRegisterMode;
+        document.getElementById('auth-title').innerText = isRegisterMode ? 'Daftar Toko Baru' : 'Admin Login';
+        document.getElementById('reg-fields').style.display = isRegisterMode ? 'block' : 'none';
+        document.getElementById('btn-text').innerText = isRegisterMode ? 'DAFTAR SEKARANG' : 'LOGIN';
+        document.getElementById('btn-toggle').innerText = isRegisterMode ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar Toko';
+    };
+
+    window.handleAuth = async function() {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const btnMain = document.getElementById('btn-main');
+        const btnText = document.getElementById('btn-text');
+
+        if (!email || !password) return alert("Mohon isi semua data!");
+
+        // Loading state
+        btnMain.disabled = true;
+        btnText.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Loading...';
+
+        try {
+            if (isRegisterMode) {
+                const tokoName = document.getElementById('toko-name').value.toLowerCase().trim().replace(/\s+/g, '-');
+                if (!tokoName) throw new Error("Nama toko wajib diisi!");
+
+                // 1. Cek apakah Nama Toko sudah dipakai orang lain
+                const docRef = doc(db, "WarungData", tokoName);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) throw new Error("Nama toko sudah digunakan! Pilih nama lain.");
+
+                // 2. Buat akun di Firebase Auth
+                await createUserWithEmailAndPassword(auth, email, password);
+
+                // 3. Buat dokumen toko di Firestore
+                await setDoc(docRef, {
+                    ownerEmail: email,
+                    menu: [],
+                    orders: []
+                });
+
+                alert("Registrasi Berhasil!");
+                window.location.href = `admin.html?toko=${tokoName}`;
+
+            } else {
+                // PROSES LOGIN
+                await signInWithEmailAndPassword(auth, email, password);
+                
+                // Cari toko yang dimiliki oleh email ini
+                const q = query(collection(db, "WarungData"), where("ownerEmail", "==", email));
+                const querySnapshot = await getDocs(q);
+                
+                if (!querySnapshot.empty) {
+                    const namaTokoFound = querySnapshot.docs[0].id;
+                    window.location.href = `admin.html?toko=${namaTokoFound}`;
+                } else {
+                    throw new Error("Akun ditemukan, tapi tidak ada toko yang terdaftar dengan email ini.");
+                }
+            }
+        } catch (e) {
+            alert(e.message);
+            btnMain.disabled = false;
+            btnText.innerText = isRegisterMode ? 'DAFTAR SEKARANG' : 'LOGIN';
+        }
+    };
+</script>
+</body>
+</html>
