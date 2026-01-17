@@ -76,12 +76,15 @@
     };
 
     window.handleAuth = async function() {
-        const email = document.getElementById('username').value.trim();
+        const usernameVal = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
         const btnMain = document.getElementById('btn-main');
         const btnText = document.getElementById('btn-text');
 
-        if (!email || !password) return alert("Mohon isi semua data!");
+        if (!usernameVal || !password) return alert("Mohon isi semua data!");
+
+        // Trik agar user bisa login pakai username (Firebase Auth butuh format email)
+        const fakeEmail = usernameVal.includes('@') ? usernameVal : `${usernameVal}@toko.com`;
 
         // Loading state
         btnMain.disabled = true;
@@ -92,17 +95,18 @@
                 const tokoName = document.getElementById('toko-name').value.toLowerCase().trim().replace(/\s+/g, '-');
                 if (!tokoName) throw new Error("Nama toko wajib diisi!");
 
-                // 1. Cek apakah Nama Toko sudah dipakai orang lain
+                // 1. Cek apakah Nama Toko sudah dipakai
                 const docRef = doc(db, "WarungData", tokoName);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) throw new Error("Nama toko sudah digunakan! Pilih nama lain.");
 
-                // 2. Buat akun di Firebase Auth
-                await createUserWithEmailAndPassword(auth, username, password);
+                // 2. Buat akun di Firebase Auth menggunakan email buatan
+                await createUserWithEmailAndPassword(auth, fakeEmail, password);
 
                 // 3. Buat dokumen toko di Firestore
                 await setDoc(docRef, {
-                    ownerEmail: username,
+                    ownerUsername: usernameVal,
+                    ownerEmail: fakeEmail,
                     menu: [],
                     orders: []
                 });
@@ -112,21 +116,25 @@
 
             } else {
                 // PROSES LOGIN
-                await signInWithEmailAndPassword(auth, username, password);
+                await signInWithEmailAndPassword(auth, fakeEmail, password);
                 
-                // Cari toko yang dimiliki oleh email ini
-                const q = query(collection(db, "WarungData"), where("ownerEmail", "==", username));
+                // Cari toko yang dimiliki oleh username/email ini
+                const q = query(collection(db, "WarungData"), where("ownerEmail", "==", fakeEmail));
                 const querySnapshot = await getDocs(q);
                 
                 if (!querySnapshot.empty) {
                     const namaTokoFound = querySnapshot.docs[0].id;
                     window.location.href = `admin.html?toko=${namaTokoFound}`;
                 } else {
-                    throw new Error("Akun ditemukan, tapi tidak ada toko yang terdaftar dengan username ini.");
+                    throw new Error("Akun ditemukan, tapi tidak ada toko yang terdaftar.");
                 }
             }
         } catch (e) {
-            alert(e.message);
+            let errorMsg = e.message;
+            if(errorMsg.includes("auth/invalid-credential")) errorMsg = "Username atau Password salah!";
+            if(errorMsg.includes("auth/email-already-in-use")) errorMsg = "Username ini sudah terdaftar!";
+            
+            alert(errorMsg);
             btnMain.disabled = false;
             btnText.innerText = isRegisterMode ? 'DAFTAR SEKARANG' : 'LOGIN';
         }
@@ -134,4 +142,3 @@
 </script>
 </body>
 </html>
-
